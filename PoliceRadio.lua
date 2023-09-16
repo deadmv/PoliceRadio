@@ -1,5 +1,5 @@
 script_name('PoliceRadio')
-script_version("16.09.2023")
+script_version("17.09.2023")
 script_author('deadmv')
 script_properties('police-radio')
 
