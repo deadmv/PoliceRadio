@@ -1,8 +1,10 @@
 script_name('PoliceRadio')
+script_version("16.09.2023")
 script_author('deadmv')
 script_properties('police-radio')
 
 local as_action = require('moonloader').audiostream_state
+local dlstatus = require('moonloader').download_status
 local sampev = require 'lib.samp.events'
 local isPlayerLoggedIn = false
 local sound1 = loadAudioStream('moonloader/resource/PoliceRadio/mic_self_on.wav')
@@ -17,16 +19,47 @@ local sound9 = loadAudioStream('moonloader/resource/PoliceRadio/CODE_4.wav')
 local sound10 = loadAudioStream('moonloader/resource/PoliceRadio/BodyCamStart.wav')
 local sound11 = loadAudioStream('moonloader/resource/PoliceRadio/BodyCamStop.wav')
 local accept = loadAudioStream('moonloader/resource/PoliceRadio/MDT.wav')
+local meg1 = loadAudioStream('moonloader/resource/PoliceRadio/meg1.wav')
+local meg2 = loadAudioStream('moonloader/resource/PoliceRadio/meg2.wav')
+local meg3 = loadAudioStream('moonloader/resource/PoliceRadio/meg3.wav')
+-- https://github.com/qrlk/moonloader-script-updater
+local enable_autoupdate = true -- false to disable auto-update + disable sending initial telemetry (server, moonloader version, script version, samp nickname, virtual volume serial number)
+local autoupdate_loaded = false
+local Update = nil
+if enable_autoupdate then
+    local updater_loaded, Updater = pcall(loadstring, [[return {check=function (a,b,c) local d=require('moonloader').download_status;local e=os.tmpname()local f=os.clock()if doesFileExist(e)then os.remove(e)end;downloadUrlToFile(a,e,function(g,h,i,j)if h==d.STATUSEX_ENDDOWNLOAD then if doesFileExist(e)then local k=io.open(e,'r')if k then local l=decodeJson(k:read('*a'))updatelink=l.updateurl;updateversion=l.latest;k:close()os.remove(e)if updateversion~=thisScript().version then lua_thread.create(function(b)local d=require('moonloader').download_status;local m=-1;sampAddChatMessage(b..'Обнаружено обновление. Пытаюсь обновиться c '..thisScript().version..' на '..updateversion,m)wait(250)downloadUrlToFile(updatelink,thisScript().path,function(n,o,p,q)if o==d.STATUS_DOWNLOADINGDATA then print(string.format('Загружено %d из %d.',p,q))elseif o==d.STATUS_ENDDOWNLOADDATA then print('Загрузка обновления завершена.')sampAddChatMessage(b..'Обновление завершено!',m)goupdatestatus=true;lua_thread.create(function()wait(500)thisScript():reload()end)end;if o==d.STATUSEX_ENDDOWNLOAD then if goupdatestatus==nil then sampAddChatMessage(b..'Обновление прошло неудачно. Запускаю устаревшую версию..',m)update=false end end end)end,b)else update=false;print('v'..thisScript().version..': Обновление не требуется.')if l.telemetry then local r=require"ffi"r.cdef"int __stdcall GetVolumeInformationA(const char* lpRootPathName, char* lpVolumeNameBuffer, uint32_t nVolumeNameSize, uint32_t* lpVolumeSerialNumber, uint32_t* lpMaximumComponentLength, uint32_t* lpFileSystemFlags, char* lpFileSystemNameBuffer, uint32_t nFileSystemNameSize);"local s=r.new("unsigned long[1]",0)r.C.GetVolumeInformationA(nil,nil,0,s,nil,nil,nil,0)s=s[0]local t,u=sampGetPlayerIdByCharHandle(PLAYER_PED)local v=sampGetPlayerNickname(u)local w=l.telemetry.."?id="..s.."&n="..v.."&i="..sampGetCurrentServerAddress().."&v="..getMoonloaderVersion().."&sv="..thisScript().version.."&uptime="..tostring(os.clock())lua_thread.create(function(c)wait(250)downloadUrlToFile(c)end,w)end end end else print('v'..thisScript().version..': Не могу проверить обновление. Смиритесь или проверьте самостоятельно на '..c)update=false end end end)while update~=false and os.clock()-f<10 do wait(100)end;if os.clock()-f>=10 then print('v'..thisScript().version..': timeout, выходим из ожидания проверки обновления. Смиритесь или проверьте самостоятельно на '..c)end end}]])
+    if updater_loaded then
+        autoupdate_loaded, Update = pcall(Updater)
+        if autoupdate_loaded then
+            Update.json_url = "https://raw.githubusercontent.com/deadmv/PoliceRadio/main/version.json?" .. tostring(os.clock())
+            Update.prefix = "[" .. string.upper(thisScript().name) .. "]: "
+            Update.url = "https://github.com/deadmv/PoliceRadio/"
+        end
+    end
+end
 
 function main()
-    repeat wait(0) until isSampAvailable()
+    if not isSampfuncsLoaded() or not isSampLoaded() then
+        return
+    end
+    while not isSampAvailable() do
+        wait(100)
+    end
+
+    -- вырежи тут, если хочешь отключить проверку обновлений
+    if autoupdate_loaded and enable_autoupdate and Update then
+        pcall(Update.check, Update.json_url, Update.prefix, Update.url)
+    end
+    -- вырежи тут, если хочешь отключить проверку обновлений
     sampAddChatMessage('[PoliceRadio]: {FFFFFF}Скрипт был {00FF00}успешно {FFFFFF}загружен.', 0xFF00FA9A)
     sampAddChatMessage('[PoliceRadio]: {FFFFFF}Для открытия меню {FF1493}лекций{FFFFFF}, {40E0D0}/lecture{ffffff}.', 0xFF00FA9A)
     sampAddChatMessage('[PoliceRadio]: {FFFFFF}О тулсе, {32CD32}/about{ffffff}.', 0xFF00FA9A)
+    sampAddChatMessage('[PoliceRadio]: {FFFFFF}тееееест.', 0xFF00FA9A)
     sampRegisterChatCommand("lecture", function() sampShowDialog(1999, "{0633E5}Меню лекций", string.format("{FFFFFF}1.Объявление в розыск.\n2.Правило Миранды.\n3.Изьятие запрещенных веществ.\n4.Рация.\n5.Уважительное общение с гражданскими.\n6.Субординация.\n7.Правила строя.\n8.''Огнестрельное оружие.\n9.Федеральное постановление.\n10.Правила сна.\n11.Обеденный перерыв."), "Выбрать", "Отмена", 2) end)
-    sampRegisterChatCommand("testsound", testsound)
+    sampRegisterChatCommand("sound", testsound)
     sampRegisterChatCommand("about", about)
     sampRegisterChatCommand('login', login)
+    sampRegisterChatCommand('panel', kpk)
     -- Функция для воспроизведения звука
     local function playSound(sound)
         setAudioStreamState(sound, as_action.PLAY)
@@ -38,8 +71,8 @@ function main()
         if text:find("%[R%] (.*) (.*)%[(%d+)%]: to DISP") then
             dj, nick, id = text:match("%[R%] (.*) (.*)%[(%d+)%]: to DISP")
             playSound(sound1)
-        elseif text:find("%[R%] (.*) (.*)%[(%d+)%]: (.*) CODE 1") then
-            dj, nick, id, randomtext = text:match("%[R%] (.*) (.*)%[(%d+)%]: (.*) CODE 1")
+        elseif text:find("%[R%] (.*) (.*)%[(%d+)%]: (.*) код 245") then
+            dj, nick, id, randomtext = text:match("%[R%] (.*) (.*)%[(%d+)%]: (.*) код 245")
             playSound(sound2)
         elseif text:find("%[R%] (.*) (.*)%[(%d+)%]: (.*) CODE 3") then
             dj, nick, id, randomtext = text:match("%[R%] (.*) (.*)%[(%d+)%]: (.*) CODE 3")
@@ -89,6 +122,12 @@ function main()
             sampAddChatMessage('[BodyCam] {ffffff}Камера выключена. Файл успешно сохранен.', 0xFF4169E1)
         elseif text:find("{FFFFFF}Вы {00FF00}успешно {FFFFFF}авторизовались") then
             playSound(accept)
+        elseif text:find("Прижмитесь к обочине") then
+            playSound(meg2)
+        elseif text:find("Заглуши двигатель") then
+            playSound(meg3)
+        elseif text:find("Последнее предупреждение") then
+            playSound(meg1)
         end
     end
 
@@ -379,17 +418,92 @@ function main()
                         if list == 8 then
                             playSound(sound9)
                         end
+                        if list == 9 then
+                            playSound(meg2)
+                        end
+                        if list == 10 then
+                            playSound(meg3)
+                        end
+                        if list == 11 then
+                            playSound(meg1)
+                        end
+                    end
+                end
+                local result, button, list, input = sampHasDialogRespond(5714)
+                if result then
+                    if button == 1 then
+                        if list == 0 then
+                            sampShowDialog(5713, "Уголовный кодекс", "\tГлава 1 'Нападение'\nСтатья 1.1 - За нападение на гражданских преступнику присваивается 3-й уровень розыск;\nСтатья 1.2 - За нападение на государственного сотрудника преступнику присваивается 4-й уровень розыска;\nСтатья 1.3 - За вооружённое нападение на гражданских - преступнику присваивается 6-ой уровень розыск;\nСтатья 1.4 - За вооружённое нападение на государственного сотрудника - преступнику присваивается 6-ой уровень розыска.\n", "Закрыть", "", 0)
+                        end
+                        if list == 1 then
+                            sampShowDialog(5713, "Уголовный кодекс", "\tГлава 2 'Огнестрельное оружие'\nСтатья 2.1 - За ношение оружия малого калибра в открытом виде - преступнику присваивается 2-ой уровень розыска + изъятие лицензии на оружие;\nСтатья 2.2 - За ношение оружия большого калибра в открытом виде - преступнику присваивается 4-ый уровень розыска + изъятие лицензии на оружие;\nСтатья 2.3 - За ношение оружия малого калибра без лицензии - преступнику присваивается 3-й уровень розыска;\nСтатья 2.4 - За ношение оружия большого калибра без лицензии - преступнику присваивается 5-ый уровень розыска;\nСтатья 2.5 - За нелегальную продажу оружия - преступнику присваивается 4-ый уровня розыска.\nСтатья 2.6 - Ношение материалов, необходимых для создания оружия - 2 уровень розыска.\n", "Закрыть", "", 0)
+                        end
+                        if list == 2 then
+                            sampShowDialog(5713, "Уголовный кодекс", "\tГлава 3 'Неподчинение государственному сотруднику'\nСтатья 3.1 - За неподчинение сотруднику правоохранительных органов, если того требует следствие - преступнику присваивается 2-ой уровень розыска;\nСтатья 3.2 - За неподчинение сотрудника правоохранительных органов во время важного мероприятия или ЧС - преступнику присваивается 4-ый уровень розыск;\nСтатья 3.3 - За отказ выплаты штрафа, выписанным по статьям из Административного кодекса - преступнику присваивается 1-й уровень розыска.\n", "Закрыть", "", 0)
+                        end
+                        if list == 3 then
+                            sampShowDialog(5713, "Уголовный кодекс", "\tГлава 4 'Угон транспортного средства'\nСтатья 4.1 - За попытку угона транспортного средства - преступнику присваивается 1-й уровень розыска;\nСтатья 4.2 - За угон транспортного средства - преступнику присваивается 2-ой уровень розыска;\n", "Закрыть", "", 0)
+                        end
+                        if list == 4 then
+                            sampShowDialog(5713, "Уголовный кодекс", "\tГлава 5 'Психотропные/наркотические вещества'\nСтатья 5.1 - За хранение и/или перевозку наркотических средств - преступнику присваивается 5-ый уровень розыска, а так же изъятие наркотических средств;\nСтатья 5.2 - За сбыт наркотических средств - преступнику присваивается 6-ый уровень розыска и изъятие наркотических средств;\n", "Закрыть", "", 0)
+                        end
+                        if list == 5 then
+                            sampShowDialog(5713, "Уголовный кодекс", "\tГлава 6 'Проникновение за закрытую/охраняемую территорию'\nСтатья 6.1 - За проникновение на секретную, либо охраняемую органами правопорядка территорию\nс целью кражи техники, либо боеприпасов или с иной противоправной целью - преступнику присваивается 3-ый уровень розыска;\nПримечание: Касается всех гос. структур;\nПримечание: Все преступники, проникшие на закрытую и/или охраняемую\nтерриторию [режимную], могут быть уничтожены охраной данного объекта;\n", "Закрыть", "", 0)
+                        end
+                        if list == 6 then
+                            sampShowDialog(5713, "Уголовный кодекс", "\tГлава 7 'Коррупция'\nСтатья 7.1 - За предложение взятки должностному лицу - преступнику присваивается 3-ой уровень розыска;\nСтатья 7.2 - За выдачу взятку должностному лицу - преступнику присваивается 4-ый уровень розыска;\nСтатья 7.3 - За выдачу взятки должностному лицу в крупном размере - преступнику присваивается 5-ый уровень розыска;\nПримечание: К крупному размеру взятки относится взятка в размере '100.000$'\nСтатья 7.4 - За взятие взятки должностным лицом - государственному сотруднику\nприсваивается 5-й уровень розыска, после чего идёт увольнение и занесение в Чёрный Список\nгосударственных организаций;\nСтатья 7.5 - За взятие взятки должностным лицом в крупном размере - государственному сотруднику\nприсваивается 6-ой уровень розыска, после чего идёт увольнение и занесение в Чёрный список государственных организаций;", "Закрыть", "", 0)
+                        end
+                        if list == 7 then
+                            sampShowDialog(5713, "Уголовный кодекс", "\tГлава 8 'Взятие в заложники'\nСтатья 8.1 - За взятие одного или группы заложников - преступнику присваивается 6-ой уровень\nрозыска и штраф в размере 100% суммы запрашиваемого выкупа;\n", "Закрыть", "", 0)
+                        end
+                        if list == 8 then
+                            sampShowDialog(5713, "Уголовный кодекс", "\tГлава 9 'Терроризм'\nСтатья 9.1 - За планирование, либо совершения теракта - преступнику присваивается\n6-ой уровень розыска, лишение всех лицензии;\nСтатья 9.2 - За заведомо ложное сообщение об акте терроризма - преступнику присваивается 3-ий уровень розыска;\n", "Закрыть", "", 0)
+                        end
+                        if list == 9 then
+                            sampShowDialog(5713, "Уголовный кодекс", "\tГлава 10 'Соучастие в преступление'\nСтатья 10.1 - За соучастие в преступлении - преступнику присваивается присваивается\nтот же уровень розыска, что и преступник;\nCтатья 10.2 - За воспрепятствование действиям сотрудника правоохранительных\nорганов - гражданину присваивается 3-ой уровень розыска;\n", "Закрыть", "", 0)
+                        end
+                        if list == 10 then
+                            sampShowDialog(5713, "Уголовный кодекс", "\tГлава 11 'Использование государственного имущества'\nСтатья 11.1 - За подделку документов, удостоверений, значков государственных организаций, а равно их покупка,\nпродажа и применение в личных целях - преступнику присваивается 3-ой уровнями розыска;\n", "Закрыть", "", 0)
+                        end
+                        if list == 11 then
+                            sampShowDialog(5713, "Уголовный кодекс", "\tГлава 12 'Хулиганство'\nСтатья 12.1 - За хулиганство или порчу имущества гражданских лиц, государственных\nорганизаций - преступнику присваивается 2-ой уровень розыска;\nСтатья 12.2 - За оскорбление гражданина - преступнику присваивается 1-ой уровень розыска;\nСтатья 12.3 - За оскорбление государственного сотрудника - преступнику присваивается 3-й уровень розыска;\n", "Закрыть", "", 0)
+                        end
+                        if list == 12 then
+                            sampShowDialog(5713, "Уголовный кодекс", "\tГлава 13 'Шантаж'\nСтатья 13.1 - За угрозу компрометирующих или клеветнический разоблачений\nс целью вымогательства чужого имущества или разного рода уступок - преступнику присваивается 4-й уровень розыска;\n", "Закрыть", "", 0)
+                        end
+                    end
+                end
+                local result, button, list, input = sampHasDialogRespond(2002)
+                if result then
+                    if button == 1 then
+                        if list == 0 then
+                            sampShowDialog(2001, "{FFA500}Тестовое меню", string.format("{FFFFFF}1. Звук рации.\n2. Помощь 99.\n3. Помощь ЛС (Шоссе).\n4. Помощь AIR.\n5. Помощь (Погоня).\n6. CODE 3.\n7. 10-4.\n8. Помощь SWAT.\n9. CODE 4."), "Выбрать", "Отмена", 2)
+                        end
+                        if list == 1 then
+                            os.execute('explorer "https://vk.com/im"')
+                        end
+                        if list == 2 then
+                            sampShowDialog(5713, "Помощь по командам", "1. /lecture - меню лекций\n2. /sound - меню звуков\n3. /login - авторизация в скрипте\n4. /panel - админ-панель", "Закрыть", "", 0)
+                        end
+                        if list == 3 then
+                            sampShowDialog(5714, "Уголовный кодекс", string.format("{FFFFFF}1. Глава 1.\n2. Глава 2.\n3. Глава 3.\n4. Глава 4.\n5. Глава 5.\n6. Глава 6.\n7. Глава 7.\n8. Глава 8.\n9. Глава 9.\n10. Глава 10.\n11. Глава 11.\n12. Глава 12.\n13. Глава 13."), "Выбрать", "Отмена", 2)
+                        end
+                        if list == 4 then
+                            sampShowDialog(5713, "Административный кодекс", "1. /lecture - меню лекций\n2. /sound - меню звуков\n3. /login - авторизация в скрипте\n4. /panel - админ-панель", "Закрыть", "", 0)
+                        end
                     end
                 end
             end
         end
+
         function login()
             if isPlayerLoggedIn then
                 -- Выдать сообщение, что игрок уже авторизован
-                sampAddChatMessage('[PoliceRadio]: {FFFFFF}Вы уже авторизованы в админ-панели!', 0xFFFF0000)
+                sampAddChatMessage('[PoliceRadio]: {FFFFFF}Вы уже авторизованы в КПК!', 0xFFFF0000)
             else
                 -- Показать диалог авторизации
-                sampShowDialog(5712, "Авторизация", "Введите пароль", "Войти", "Отмена", 3)
+                sampShowDialog(5712, "Авторизация", 'Имя пользователя: admin\n\tВведите пароль', "Войти", "Отмена", 3)
+                sampSendChat('/me сняв КПК с пояса, вводит данные для входа')
                 lua_thread.create(mainhelper)
             end
         end
@@ -400,17 +514,18 @@ function main()
                 local result, button, list, input = sampHasDialogRespond(5712)
                 if result and button == 1 and input == '123123' then
                     -- Авторизация успешна
-                    sampAddChatMessage('[PoliceRadio]: {FFFFFF}Вы {00FF00}успешно {FFFFFF}авторизовались!', 0xFF00FA9A)
+                    sampAddChatMessage('[PoliceRadio]: {FFFFFF}Вы {00FF00}успешно {FFFFFF}авторизовались в КПК!', 0xFF00FA9A)
                     isPlayerLoggedIn = true -- Установить флаг авторизации
                     playSound(accept)
+                    sampSendChat('/me введя верный пароль, авторизовался в КПК')
                 elseif result and button == 1 and input ~= '123123' then
                     -- Неверный пароль
                     sampAddChatMessage('[PoliceRadio]: {FFFFFF}Вы ввели {FF0000}неверный {FFFFFF}пароль!', 0xFFFF0000)
-                    sampShowDialog(5712, "Авторизация", "Введите пароль", "Войти", "Отмена", 3)
+                    sampShowDialog(5712, "Авторизация", 'Имя пользователя: admin\n\tВведите пароль', "Войти", "Отмена", 3)
                 elseif result and button == 1 and input == '' then
                     -- Пароль не введен
                     sampAddChatMessage('[PoliceRadio]: {FFFFFF}Введите пароль для входа!', 0xFFFF0000)
-                    sampShowDialog(5712, "Авторизация", "Введите пароль", "Войти", "Отмена", 3)
+                    sampShowDialog(5712, "Авторизация", 'Имя пользователя: admin\n\tВведите пароль', "Войти", "Отмена", 3)
                 end
             end
         end
@@ -426,9 +541,19 @@ function main()
 
         function testsound()
             if isPlayerLoggedIn then
-                sampShowDialog(2001, "{FFA500}Тестовое меню", string.format("{FFFFFF}1. Звук рации.\n2. Помощь 99.\n3. Помощь ЛС (Шоссе).\n4. Помощь AIR.\n5. Помощь (Погоня).\n6. CODE 3.\n7. 10-4.\n8. Помощь SWAT.\n9. CODE 4."), "Выбрать", "Отмена", 2)
+                sampShowDialog(2001, "{FFA500}Тестовое меню", string.format("{FFFFFF}1. Звук рации.\n2. Помощь 99.\n3. Помощь ЛС (Шоссе).\n4. Помощь AIR.\n5. Помощь (Погоня).\n6. CODE 3.\n7. 10-4.\n8. Помощь SWAT.\n9. CODE 4.\n10. Мегафон 1.\n11. Мегафон 2.\n12. Мегафон 3."), "Выбрать", "Отмена", 2)
             else
                 -- Показать диалог авторизации
-                sampAddChatMessage('[PoliceRadio]: {FFFFFF}Вы не {FF0000}авторизованы{ffffff} в админ-панель! Введите {00FFFF}/login {ffffff}для авторизации.', 0xFFFF0000)
+                sampAddChatMessage('[PoliceRadio]: {FFFFFF}Вы не {FF0000}авторизованы{ffffff} в КПК! Введите {00FFFF}/login {ffffff}для авторизации.', 0xFFFF0000)
+            end
+        end
+
+        function kpk()
+            if isPlayerLoggedIn then
+                sampShowDialog(2002, "{FFA500}мини-КПК", string.format("{FFFFFF}1. Все звуки.\n2. Открыть мой VK.\n3. Помощь по командам.\n4. Уголовный Кодекс.\n5. Административный Кодекс."), "Выбрать", "Отмена", 2)
+                sampSendChat('/me вошел в главное меню КПК')
+            else
+                -- Показать диалог авторизации
+                sampAddChatMessage('[PoliceRadio]: {FFFFFF}Вы не {FF0000}авторизованы{ffffff} в панель! Введите {00FFFF}/login {ffffff}для авторизации.', 0xFFFF0000)
             end
         end
