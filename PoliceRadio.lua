@@ -1,27 +1,35 @@
 script_name('PoliceRadio')
-script_version("1.4")
-script_author('deadmv')
+script_version("2.2")
+script_author('qsliwq')
 script_properties('police-radio')
 
 local as_action = require('moonloader').audiostream_state
 local dlstatus = require('moonloader').download_status
 local sampev = require 'lib.samp.events'
+local memory = require 'memory'
 local isPlayerLoggedIn = false
-local sound1 = loadAudioStream('moonloader/resource/PoliceRadio/mic_self_on.wav')
-local sound2 = loadAudioStream('moonloader/resource/PoliceRadio/help/help99.wav')
-local sound3 = loadAudioStream('moonloader/resource/PoliceRadio/Los-Santos/OFFICERS_REPORT_LOSSANTOS.wav')
-local sound4 = loadAudioStream('moonloader/resource/PoliceRadio/help/AIR.wav')
-local sound5 = loadAudioStream('moonloader/resource/PoliceRadio/help/help.wav')
-local sound6 = loadAudioStream('moonloader/resource/PoliceRadio/CODE_3.wav')
-local sound7 = loadAudioStream('moonloader/resource/PoliceRadio/10_4.wav')
-local sound8 = loadAudioStream('moonloader/resource/PoliceRadio/help/SWAT.wav')
-local sound9 = loadAudioStream('moonloader/resource/PoliceRadio/CODE_4.wav')
-local sound10 = loadAudioStream('moonloader/resource/PoliceRadio/BodyCamStart.wav')
-local sound11 = loadAudioStream('moonloader/resource/PoliceRadio/BodyCamStop.wav')
-local accept = loadAudioStream('moonloader/resource/PoliceRadio/MDT.wav')
-local meg1 = loadAudioStream('moonloader/resource/PoliceRadio/meg1.wav')
-local meg2 = loadAudioStream('moonloader/resource/PoliceRadio/meg2.wav')
-local meg3 = loadAudioStream('moonloader/resource/PoliceRadio/meg3.wav')
+local lanes = require('lanes').configure()
+local ffi = require('ffi')
+local sound1 = loadAudioStream('moonloader/PoliceRadio/audio/mic_self_on.wav')
+local sound2 = loadAudioStream('moonloader/PoliceRadio/audio/help/help99.wav')
+local sound3 = loadAudioStream('moonloader/PoliceRadio/audio/Los-Santos/OFFICERS_REPORT_LOSSANTOS.wav')
+local sound4 = loadAudioStream('moonloader/PoliceRadio/audio/help/AIR.wav')
+local sound5 = loadAudioStream('moonloader/PoliceRadio/audio/help/help.wav')
+local sound6 = loadAudioStream('moonloader/PoliceRadio/audio/CODE_3.wav')
+local sound7 = loadAudioStream('moonloader/PoliceRadio/audio/10_4.wav')
+local sound8 = loadAudioStream('moonloader/PoliceRadio/audio/help/SWAT.wav')
+local sound9 = loadAudioStream('moonloader/PoliceRadio/audio/CODE_4.wav')
+local sound10 = loadAudioStream('moonloader/PoliceRadio/audio/BodyCamStart.wav')
+local sound11 = loadAudioStream('moonloader/PoliceRadio/audio/BodyCamStop.wav')
+local accept = loadAudioStream('moonloader/PoliceRadio/audio/MDT.wav')
+local meg1 = loadAudioStream('moonloader/PoliceRadio/audio/meg1.wav')
+local meg2 = loadAudioStream('moonloader/PoliceRadio/audio/meg2.wav')
+local meg3 = loadAudioStream('moonloader/PoliceRadio/audio/meg3.wav')
+local crime1 = loadAudioStream('moonloader/PoliceRadio/audio/crime/CRIME_1.wav')
+local crime2 = loadAudioStream('moonloader/PoliceRadio/audio/crime/CRIME_2.wav')
+local crime3 = loadAudioStream('moonloader/PoliceRadio/audio/crime/CRIME_3.wav')
+local crime4 = loadAudioStream('moonloader/PoliceRadio/audio/crime/CRIME_4.wav')
+local crime5 = loadAudioStream('moonloader/PoliceRadio/audio/crime/CRIME_5.wav')
 -- https://github.com/qrlk/moonloader-script-updater
 local enable_autoupdate = true -- false to disable auto-update + disable sending initial telemetry (server, moonloader version, script version, samp nickname, virtual volume serial number)
 local autoupdate_loaded = false
@@ -38,6 +46,58 @@ if enable_autoupdate then
     end
 end
 
+-- свалка переменных
+gameServer = nil
+srv = nil
+-- свалка переменных
+
+function loadbinders()
+    if not doesDirectoryExist(getGameDirectory()..'//moonloader//PoliceRadio') then 
+        createDirectory(getGameDirectory()..'//moonloader//PoliceRadio') 
+        sampAddChatMessage('[PoliceRadio]: {FFFFFF}Директория для нужных файлов скрипта успешно создана', 0xFF00FA9A)
+    end
+end
+
+function files_add() -- функция подгрузки медиа файлов
+    print("Проверка целостности файлов")
+    if not doesDirectoryExist("moonloader\\PoliceRadio") then print("Создаю директорию PoliceRadio/") createDirectory("moonloader\\PoliceRadio") end
+    if not doesDirectoryExist("moonloader\\PoliceRadio\\audio") then print("Создаю директорию PoliceRadio/audio") createDirectory('moonloader\\PoliceRadio\\audio') end
+    if not doesDirectoryExist("moonloader\\PoliceRadio\\audio\\Los-Santos") then print("Создаю директорию PoliceRadio/audio/Los-Santos") createDirectory('moonloader\\PoliceRadio\\audio\\Los-Santos') end
+    if not doesDirectoryExist("moonloader\\PoliceRadio\\audio\\help") then print("Создаю директорию PoliceRadio/audio/help") createDirectory('moonloader\\PoliceRadio\\audio\\help') end
+    if not doesDirectoryExist("moonloader\\PoliceRadio\\audio\\crime") then print("Создаю директорию PoliceRadio/audio/crime") createDirectory('moonloader\\PoliceRadio\\audio\\crime') end
+    if not doesDirectoryExist("moonloader\\PoliceRadio\\audio\\Vinewood") then print("Создаю директорию PoliceRadio/audio/Vinewood") createDirectory('moonloader\\PoliceRadio\\audio\\Vinewood') end
+end
+
+function async_http_request(method, url, args, resolve, reject) -- асинхронные запросы, опасная штука местами, ибо при определенном использовании игра может улететь в аут
+	local request_lane = lanes.gen('*', {package = {path = package.path, cpath = package.cpath}}, function()
+		local requests = require 'requests'
+        local ok, result = pcall(requests.request, method, url, args)
+        if ok then
+            result.json, result.xml = nil, nil -- cannot be passed through a lane
+            return true, result
+        else
+            return false, result -- return error
+        end
+    end)
+    if not reject then reject = function() end end
+    lua_thread.create(function()
+        local lh = request_lane()
+        while true do
+            local status = lh.status
+            if status == 'done' then
+                local ok, result = lh[1], lh[2]
+                if ok then resolve(result) else reject(result) end
+                return
+            elseif status == 'error' then
+                return reject(lh[1])
+            elseif status == 'killed' or status == 'cancelled' then
+                return reject(status)
+            end
+            wait(0)
+        end
+    end)
+end
+
 function main()
     if not isSampfuncsLoaded() or not isSampLoaded() then
         return
@@ -51,15 +111,201 @@ function main()
         pcall(Update.check, Update.json_url, Update.prefix, Update.url)
     end
     -- вырежи тут, если хочешь отключить проверку обновлений
-    sampAddChatMessage('[PoliceRadio]: {FFFFFF}Скрипт был {00FF00}успешно {FFFFFF}загружен.', 0xFF00FA9A)
-    sampAddChatMessage('[PoliceRadio]: {FFFFFF}Для открытия меню {FF1493}лекций{FFFFFF}, {40E0D0}/lecture{ffffff}.', 0xFF00FA9A)
-    sampAddChatMessage('[PoliceRadio]: {FFFFFF}О тулсе, {32CD32}/about{ffffff}.', 0xFF00FA9A)
+
+    -- Подгрузка звуковых файлов
+    print("Начинаем подгрузку скрипта и его составляющих")
+    sampAddChatMessage("[PoliceRadio]: {FFFFFF}Скрипт подгружен в игру, версия: {00C2BB}"..thisScript().version.."{ffffff}, начинаем инициализацию.", 0xFF00FA9A)
+
+    files_add() -- загрузка файлов и подгрузка текстур
+
+    loadbinders()
+	if not doesFileExist("moonloader/PoliceRadio/audio/10_4.wav") then
+		sampAddChatMessage('[PoliceRadio]: {FFFFFF}Ресурс для работы скрипта не была найден, началось автоматическое скачивание..', 0xFF00FA9A)
+		download_id = downloadUrlToFile('https://drive.google.com/u/0/uc?id=1x5t8JcOSrCilw7bDs9mH6m4uy5YNyHSX&export=download', 'moonloader/PoliceRadio/audio/10_4.wav', function(id, status, p1, p2)
+        if status == dlstatus.STATUS_ENDDOWNLOADDATA then sampAddChatMessage('[PoliceRadio]: {FFFFFF}Скачивание ресурса успешно завершено.', 0xFF00FA9A) end
+		end)
+	end
+    if not doesFileExist("moonloader/PoliceRadio/audio/BodyCamStart.wav") then
+		sampAddChatMessage('[PoliceRadio]: {FFFFFF}Ресурс для работы скрипта не была найден, началось автоматическое скачивание..', 0xFF00FA9A)
+		download_id = downloadUrlToFile('https://drive.google.com/u/0/uc?id=1pl_IqCkkRzg-KD9SZANk-qrMc3XhPVFB&export=download', 'moonloader/PoliceRadio/audio/BodyCamStart.wav', function(id, status, p1, p2)
+        if status == dlstatus.STATUS_ENDDOWNLOADDATA then sampAddChatMessage('[PoliceRadio]: {FFFFFF}Скачивание ресурса успешно завершено.', 0xFF00FA9A) end
+		end)
+	end
+    if not doesFileExist("moonloader/PoliceRadio/audio/BodyCamStop.wav") then
+		sampAddChatMessage('[PoliceRadio]: {FFFFFF}Ресурс для работы скрипта не была найден, началось автоматическое скачивание..', 0xFF00FA9A)
+		download_id = downloadUrlToFile('https://drive.google.com/u/0/uc?id=1QdFnnmeGv_Q9kgMsv0QwYKFf2Xzy42Hf&export=download', 'moonloader/PoliceRadio/audio/BodyCamStop.wav', function(id, status, p1, p2)
+        if status == dlstatus.STATUS_ENDDOWNLOADDATA then sampAddChatMessage('[PoliceRadio]: {FFFFFF}Скачивание ресурса успешно завершено.', 0xFF00FA9A) end
+		end)
+	end
+    if not doesFileExist("moonloader/PoliceRadio/audio/CODE_3.wav") then
+		sampAddChatMessage('[PoliceRadio]: {FFFFFF}Ресурс для работы скрипта не была найден, началось автоматическое скачивание..', 0xFF00FA9A)
+		download_id = downloadUrlToFile('https://drive.google.com/u/0/uc?id=1-iJ8qE5oPRBs5YS2coVh9wyCCvKNvf54&export=download', 'moonloader/PoliceRadio/audio/CODE_3.wav', function(id, status, p1, p2)
+        if status == dlstatus.STATUS_ENDDOWNLOADDATA then sampAddChatMessage('[PoliceRadio]: {FFFFFF}Скачивание ресурса успешно завершено.', 0xFF00FA9A) end
+		end)
+	end
+    if not doesFileExist("moonloader/PoliceRadio/audio/CODE_4.wav") then
+		sampAddChatMessage('[PoliceRadio]: {FFFFFF}Ресурс для работы скрипта не была найден, началось автоматическое скачивание..', 0xFF00FA9A)
+		download_id = downloadUrlToFile('https://drive.google.com/u/0/uc?id=1m-Ou5W4gmBwo7mZU3jbrVt2OkyHAXP0f&export=download', 'moonloader/PoliceRadio/audio/CODE_4.wav', function(id, status, p1, p2)
+        if status == dlstatus.STATUS_ENDDOWNLOADDATA then sampAddChatMessage('[PoliceRadio]: {FFFFFF}Скачивание ресурса успешно завершено.', 0xFF00FA9A) end
+		end)
+	end
+    if not doesFileExist("moonloader/PoliceRadio/audio/MDT.wav") then
+		sampAddChatMessage('[PoliceRadio]: {FFFFFF}Ресурс для работы скрипта не была найден, началось автоматическое скачивание..', 0xFF00FA9A)
+		download_id = downloadUrlToFile('https://drive.google.com/u/0/uc?id=1DU7BZPSXG8u72pVEEuwVg6PC_hM46jup&export=download', 'moonloader/PoliceRadio/audio/MDT.wav', function(id, status, p1, p2)
+        if status == dlstatus.STATUS_ENDDOWNLOADDATA then sampAddChatMessage('[PoliceRadio]: {FFFFFF}Скачивание ресурса успешно завершено.', 0xFF00FA9A) end
+		end)
+	end
+    if not doesFileExist("moonloader/PoliceRadio/audio/UNITS_RESPOND_CODE_99_02.wav") then
+		sampAddChatMessage('[PoliceRadio]: {FFFFFF}Ресурс для работы скрипта не была найден, началось автоматическое скачивание..', 0xFF00FA9A)
+		download_id = downloadUrlToFile('https://drive.google.com/u/0/uc?id=1iqESRC0IswF01ZqWNtpcnzbdepoPrybB&export=download', 'moonloader/PoliceRadio/audio/UNITS_RESPOND_CODE_99_02.wav', function(id, status, p1, p2)
+        if status == dlstatus.STATUS_ENDDOWNLOADDATA then sampAddChatMessage('[PoliceRadio]: {FFFFFF}Скачивание ресурса успешно завершено.', 0xFF00FA9A) end
+		end)
+	end
+    if not doesFileExist("moonloader/PoliceRadio/audio/code3.wav") then
+		sampAddChatMessage('[PoliceRadio]: {FFFFFF}Ресурс для работы скрипта не была найден, началось автоматическое скачивание..', 0xFF00FA9A)
+		download_id = downloadUrlToFile('https://drive.google.com/u/0/uc?id=1jEx16RCYqjSsZ2cz2CTVvVAvd6Tf7sNy&export=download', 'moonloader/PoliceRadio/audio/code3.wav', function(id, status, p1, p2)
+        if status == dlstatus.STATUS_ENDDOWNLOADDATA then sampAddChatMessage('[PoliceRadio]: {FFFFFF}Скачивание ресурса успешно завершено.', 0xFF00FA9A) end
+		end)
+	end
+    if not doesFileExist("moonloader/PoliceRadio/audio/meg1.wav") then
+		sampAddChatMessage('[PoliceRadio]: {FFFFFF}Ресурс для работы скрипта не была найден, началось автоматическое скачивание..', 0xFF00FA9A)
+		download_id = downloadUrlToFile('https://drive.google.com/u/0/uc?id=1ydBmkvLYkZwxE322SGMHr9TanQ3VllJZ&export=download', 'moonloader/PoliceRadio/audio/meg1.wav', function(id, status, p1, p2)
+        if status == dlstatus.STATUS_ENDDOWNLOADDATA then sampAddChatMessage('[PoliceRadio]: {FFFFFF}Скачивание ресурса успешно завершено.', 0xFF00FA9A) end
+		end)
+	end
+    if not doesFileExist("moonloader/PoliceRadio/audio/meg2.wav") then
+		sampAddChatMessage('[PoliceRadio]: {FFFFFF}Ресурс для работы скрипта не была найден, началось автоматическое скачивание..', 0xFF00FA9A)
+		download_id = downloadUrlToFile('https://drive.google.com/u/0/uc?id=1RtmQX6dFzIiPU6EzpIJtIyRckodwgpoB&export=download', 'moonloader/PoliceRadio/audio/meg2.wav', function(id, status, p1, p2)
+        if status == dlstatus.STATUS_ENDDOWNLOADDATA then sampAddChatMessage('[PoliceRadio]: {FFFFFF}Скачивание ресурса успешно завершено.', 0xFF00FA9A) end
+		end)
+	end
+    if not doesFileExist("moonloader/PoliceRadio/audio/meg3.wav") then
+		sampAddChatMessage('[PoliceRadio]: {FFFFFF}Ресурс для работы скрипта не была найден, началось автоматическое скачивание..', 0xFF00FA9A)
+		download_id = downloadUrlToFile('https://drive.google.com/u/0/uc?id=1sgZI8xuOuljH8F1Jv9AgE5cYCjE8XOiD&export=download', 'moonloader/PoliceRadio/audio/meg3.wav', function(id, status, p1, p2)
+        if status == dlstatus.STATUS_ENDDOWNLOADDATA then sampAddChatMessage('[PoliceRadio]: {FFFFFF}Скачивание ресурса успешно завершено.', 0xFF00FA9A) end
+		end)
+	end
+    if not doesFileExist("moonloader/PoliceRadio/audio/mic_police_off.wav") then
+		sampAddChatMessage('[PoliceRadio]: {FFFFFF}Ресурс для работы скрипта не была найден, началось автоматическое скачивание..', 0xFF00FA9A)
+		download_id = downloadUrlToFile('https://drive.google.com/u/0/uc?id=18GUG1awTOJh9L1fuXy5gbiDKuYtxGV0x&export=download', 'moonloader/PoliceRadio/audio/mic_police_off.wav', function(id, status, p1, p2)
+        if status == dlstatus.STATUS_ENDDOWNLOADDATA then sampAddChatMessage('[PoliceRadio]: {FFFFFF}Скачивание ресурса успешно завершено.', 0xFF00FA9A) end
+		end)
+	end
+    if not doesFileExist("moonloader/PoliceRadio/audio/mic_self_on.wav") then
+		sampAddChatMessage('[PoliceRadio]: {FFFFFF}Ресурс для работы скрипта не была найден, началось автоматическое скачивание..', 0xFF00FA9A)
+		download_id = downloadUrlToFile('https://drive.google.com/u/0/uc?id=1SRGTy2vLxz-CHUL5yioROjl4U2mXzYnM&export=download', 'moonloader/PoliceRadio/audio/mic_self_on.wav', function(id, status, p1, p2)
+        if status == dlstatus.STATUS_ENDDOWNLOADDATA then sampAddChatMessage('[PoliceRadio]: {FFFFFF}Скачивание ресурса успешно завершено.', 0xFF00FA9A) end
+		end)
+	end
+    if not doesFileExist("moonloader/PoliceRadio/audio/Los-Santos/AIRPORT.wav") then
+		sampAddChatMessage('[PoliceRadio]: {FFFFFF}Ресурс для работы скрипта не была найден, началось автоматическое скачивание..', 0xFF00FA9A)
+		download_id = downloadUrlToFile('https://drive.google.com/u/0/uc?id=1_dLXPmSmr1dhgEK0Yaj1YsrkjohIvjKM&export=download', 'moonloader/PoliceRadio/audio/Los-Santos/AIRPORT.wav', function(id, status, p1, p2)
+        if status == dlstatus.STATUS_ENDDOWNLOADDATA then sampAddChatMessage('[PoliceRadio]: {FFFFFF}Скачивание ресурса успешно завершено.', 0xFF00FA9A) end
+		end)
+	end
+    if not doesFileExist("moonloader/PoliceRadio/audio/Los-Santos/OFFICERS_REPORT_LOSSANTOS.wav") then
+		sampAddChatMessage('[PoliceRadio]: {FFFFFF}Ресурс для работы скрипта не была найден, началось автоматическое скачивание..', 0xFF00FA9A)
+		download_id = downloadUrlToFile('https://drive.google.com/u/0/uc?id=1RvHM8g-Ak3nhIHfBvaKp9l94BCSfivtb&export=download', 'moonloader/PoliceRadio/audio/Los-Santos/OFFICERS_REPORT_LOSSANTOS.wav', function(id, status, p1, p2)
+        if status == dlstatus.STATUS_ENDDOWNLOADDATA then sampAddChatMessage('[PoliceRadio]: {FFFFFF}Скачивание ресурса успешно завершено.', 0xFF00FA9A) end
+		end)
+	end
+    if not doesFileExist("moonloader/PoliceRadio/audio/Vinewood/OFFICERS_REPORT_02.wav") then
+		sampAddChatMessage('[PoliceRadio]: {FFFFFF}Ресурс для работы скрипта не была найден, началось автоматическое скачивание..', 0xFF00FA9A)
+		download_id = downloadUrlToFile('https://drive.google.com/u/0/uc?id=1OK72X5K0fbJkyzzD8DlAk_aQ5XCQztw7&export=download', 'moonloader/PoliceRadio/audio/Vinewood/OFFICERS_REPORT_02.wav', function(id, status, p1, p2)
+        if status == dlstatus.STATUS_ENDDOWNLOADDATA then sampAddChatMessage('[PoliceRadio]: {FFFFFF}Скачивание ресурса успешно завершено.', 0xFF00FA9A) end
+		end)
+	end
+    if not doesFileExist("moonloader/PoliceRadio/audio/help/AIR.wav") then
+		sampAddChatMessage('[PoliceRadio]: {FFFFFF}Ресурс для работы скрипта не была найден, началось автоматическое скачивание..', 0xFF00FA9A)
+		download_id = downloadUrlToFile('https://drive.google.com/u/0/uc?id=1hBQNiCR4_ly1gpaoFmb2vurYVvklz8ck&export=download', 'moonloader/PoliceRadio/audio/help/AIR.wav', function(id, status, p1, p2)
+        if status == dlstatus.STATUS_ENDDOWNLOADDATA then sampAddChatMessage('[PoliceRadio]: {FFFFFF}Скачивание ресурса успешно завершено.', 0xFF00FA9A) end
+		end)
+	end
+    if not doesFileExist("moonloader/PoliceRadio/audio/help/SWAT.wav") then
+		sampAddChatMessage('[PoliceRadio]: {FFFFFF}Ресурс для работы скрипта не была найден, началось автоматическое скачивание..', 0xFF00FA9A)
+		download_id = downloadUrlToFile('https://drive.google.com/u/0/uc?id=17pxJLgpvn2VNJSxyNtBV6PtMA1UXACFr&export=download', 'moonloader/PoliceRadio/audio/help/SWAT.wav', function(id, status, p1, p2)
+        if status == dlstatus.STATUS_ENDDOWNLOADDATA then sampAddChatMessage('[PoliceRadio]: {FFFFFF}Скачивание ресурса успешно завершено.', 0xFF00FA9A) end
+		end)
+	end
+    if not doesFileExist("moonloader/PoliceRadio/audio/help/help.wav") then
+		sampAddChatMessage('[PoliceRadio]: {FFFFFF}Ресурс для работы скрипта не была найден, началось автоматическое скачивание..', 0xFF00FA9A)
+		download_id = downloadUrlToFile('https://drive.google.com/u/0/uc?id=1Z42xiWGNIkPMSKPm7PyHtqENkKjcaa0U&export=download', 'moonloader/PoliceRadio/audio/help/help.wav', function(id, status, p1, p2)
+        if status == dlstatus.STATUS_ENDDOWNLOADDATA then sampAddChatMessage('[PoliceRadio]: {FFFFFF}Скачивание ресурса успешно завершено.', 0xFF00FA9A) end
+		end)
+	end
+    if not doesFileExist("moonloader/PoliceRadio/audio/help/help99.wav") then
+		sampAddChatMessage('[PoliceRadio]: {FFFFFF}Ресурс для работы скрипта не была найден, началось автоматическое скачивание..', 0xFF00FA9A)
+		download_id = downloadUrlToFile('https://drive.google.com/u/0/uc?id=1C5_RS2DSLU-d7ialt7VyzBDc3vKc_leY&export=download', 'moonloader/PoliceRadio/audio/help/help99.wav', function(id, status, p1, p2)
+        if status == dlstatus.STATUS_ENDDOWNLOADDATA then sampAddChatMessage('[PoliceRadio]: {FFFFFF}Скачивание ресурса успешно завершено.', 0xFF00FA9A) end
+		end)
+	end
+    if not doesFileExist("moonloader/PoliceRadio/audio/crime/CRIME_1.wav") then
+		sampAddChatMessage('[PoliceRadio]: {FFFFFF}Ресурс для работы скрипта не была найден, началось автоматическое скачивание..', 0xFF00FA9A)
+		download_id = downloadUrlToFile('https://drive.google.com/u/0/uc?id=1Nu7sam2-mQzhNdyJFF4S2364QSE716U6&export=download', 'moonloader/PoliceRadio/audio/crime/CRIME_1.wav', function(id, status, p1, p2)
+        if status == dlstatus.STATUS_ENDDOWNLOADDATA then sampAddChatMessage('[PoliceRadio]: {FFFFFF}Скачивание ресурса успешно завершено.', 0xFF00FA9A) end
+		end)
+	end
+    if not doesFileExist("moonloader/PoliceRadio/audio/crime/CRIME_2.wav") then
+		sampAddChatMessage('[PoliceRadio]: {FFFFFF}Ресурс для работы скрипта не была найден, началось автоматическое скачивание..', 0xFF00FA9A)
+		download_id = downloadUrlToFile('https://drive.google.com/u/0/uc?id=1ZSC8Rx_B8Q2V4pvusY2zDRc2ODaM_yZA&export=download', 'moonloader/PoliceRadio/audio/crime/CRIME_2.wav', function(id, status, p1, p2)
+        if status == dlstatus.STATUS_ENDDOWNLOADDATA then sampAddChatMessage('[PoliceRadio]: {FFFFFF}Скачивание ресурса успешно завершено.', 0xFF00FA9A) end
+		end)
+	end
+    if not doesFileExist("moonloader/PoliceRadio/audio/crime/CRIME_3.wav") then
+		sampAddChatMessage('[PoliceRadio]: {FFFFFF}Ресурс для работы скрипта не была найден, началось автоматическое скачивание..', 0xFF00FA9A)
+		download_id = downloadUrlToFile('https://drive.google.com/u/0/uc?id=1oTlUprsiE5sDjRXZTcRmFXzDFNcT2zXN&export=download', 'moonloader/PoliceRadio/audio/crime/CRIME_3.wav', function(id, status, p1, p2)
+        if status == dlstatus.STATUS_ENDDOWNLOADDATA then sampAddChatMessage('[PoliceRadio]: {FFFFFF}Скачивание ресурса успешно завершено.', 0xFF00FA9A) end
+		end)
+	end
+    if not doesFileExist("moonloader/PoliceRadio/audio/crime/CRIME_4.wav") then
+		sampAddChatMessage('[PoliceRadio]: {FFFFFF}Ресурс для работы скрипта не была найден, началось автоматическое скачивание..', 0xFF00FA9A)
+		download_id = downloadUrlToFile('https://drive.google.com/u/0/uc?id=1Uzu0Rt3io5TrmtPpYnEO_yXUzml8XuCT&export=download', 'moonloader/PoliceRadio/audio/crime/CRIME_4.wav', function(id, status, p1, p2)
+        if status == dlstatus.STATUS_ENDDOWNLOADDATA then sampAddChatMessage('[PoliceRadio]: {FFFFFF}Скачивание ресурса успешно завершено.', 0xFF00FA9A) end
+		end)
+	end
+    if not doesFileExist("moonloader/PoliceRadio/audio/crime/CRIME_5.wav") then
+		sampAddChatMessage('[PoliceRadio]: {FFFFFF}Ресурс для работы скрипта не была найден, началось автоматическое скачивание..', 0xFF00FA9A)
+		download_id = downloadUrlToFile('https://drive.google.com/u/0/uc?id=1-_1iWhOx2gOpBhWcNWnwg6XyFu-eACyO&export=download', 'moonloader/PoliceRadio/audio/crime/CRIME_5.wav', function(id, status, p1, p2)
+        if status == dlstatus.STATUS_ENDDOWNLOADDATA then sampAddChatMessage('[PoliceRadio]: {FFFFFF}Скачивание ресурса успешно завершено.', 0xFF00FA9A) end
+		end)
+	end
+    if not doesFileExist("moonloader/PoliceRadio/audio/crime/CRIME_6.wav") then
+		sampAddChatMessage('[PoliceRadio]: {FFFFFF}Ресурс для работы скрипта не была найден, началось автоматическое скачивание..', 0xFF00FA9A)
+		download_id = downloadUrlToFile('https://drive.google.com/u/0/uc?id=1NNlQuvdvQECBOJLRCGUiMDS4IDP6ybCW&export=download', 'moonloader/PoliceRadio/audio/crime/CRIME_6.wav', function(id, status, p1, p2)
+        if status == dlstatus.STATUS_ENDDOWNLOADDATA then sampAddChatMessage('[PoliceRadio]: {FFFFFF}Скачивание ресурса успешно завершено.', 0xFF00FA9A) end
+		end)
+	end
+
+    print("Подгружаем настройки скрипта")
+    print("Проверяем подключаемый сервер")
+    if sampGetCurrentServerAddress() == "45.136.204.134" then
+		gameServer = "Samp Mobile 01"
+		srv = 1
+    else
+		print("Сервер не допущен, работа скрипта завершена")
+		sampAddChatMessage("[PoliceRadio]: {FFFFFF}К сожалению, данный скрипт недоступен для работы на данном сервере.", 0xFF00FA9A)
+		sampAddChatMessage("[PoliceRadio]: {FFFFFF}Свяжитесь с разработчиками, если хотите уточнить возможность решения данной проблемы.", 0xFF00FA9A)
+		thisScript():unload()
+		return
+	end
+    print("Проверка пройдена, сервер: "..tostring(gameServer))
+    -- Подгрузка звуковых файлов
+    sampAddChatMessage('[PoliceRadio]: {FFFFFF}Скрипт был {00FF00}успешно {FFFFFF}иницилизирован.', 0xFF00FA9A)
+    sampAddChatMessage('[PoliceRadio]: {FFFFFF}Для открытия меню {FF1493}КПК{FFFFFF}, {40E0D0}/panel{ffffff}.', 0xFF00FA9A)
+    sampAddChatMessage('[PoliceRadio]: {FFFFFF}Пароль авторизации в КПК: {32CD32}123123{ffffff}.', 0xFF00FA9A)
     sampAddChatMessage('[PoliceRadio]: {FFFFFF}Текущая версия скрипта: {FF1493}'..thisScript().version..'{FFFFFF}.', 0xFF00FA9A)
     sampRegisterChatCommand("lecture", function() sampShowDialog(1999, "{0633E5}Меню лекций", string.format("{FFFFFF}1.Объявление в розыск.\n2.Правило Миранды.\n3.Изьятие запрещенных веществ.\n4.Рация.\n5.Уважительное общение с гражданскими.\n6.Субординация.\n7.Правила строя.\n8.''Огнестрельное оружие.\n9.Федеральное постановление.\n10.Правила сна.\n11.Обеденный перерыв."), "Выбрать", "Отмена", 2) end)
     sampRegisterChatCommand("sound", testsound)
     sampRegisterChatCommand("about", about)
     sampRegisterChatCommand('login', login)
     sampRegisterChatCommand('panel', kpk)
+    sampRegisterChatCommand('fk', aAfk)
+    sampRegisterChatCommand('tst', test)
+
+    writeMemory(7634870, 1, 0, 0)
+    writeMemory(7635034, 1, 0, 0)
+    memory.hex2bin('5051FF1500838500', 7623723, 8)
+    memory.hex2bin('0F847B010000', 5499528, 6)
     -- Функция для воспроизведения звука
     local function playSound(sound)
         setAudioStreamState(sound, as_action.PLAY)
@@ -102,8 +348,8 @@ function main()
             dj, nick, id = text:match("%[R%] (.*) (.*)%[(%d+)%]: tо DISP: ...Движемся")
             playSound(sound7)
             sampAddChatMessage('[Диспетчер] {ffffff}1-ADAM-12, CODE 4, 10-4.', 0xFF4169E1)
-        elseif text:find("%[R%] (.*) (.*)%[(%d+)%]: tо DISP: Заезжаю") then
-            dj, nick, id = text:match("%[R%] (.*) (.*)%[(%d+)%]: tо DISP: Заезжаю")
+        elseif text:find("%[R%] (.*) (.*)%[(%d+)%]: tо DISP: Контроль, заезжаю") then
+            dj, nick, id = text:match("%[R%] (.*) (.*)%[(%d+)%]: tо DISP: Контроль, заезжаю")
             playSound(sound7)
             sampAddChatMessage('[Диспетчер] {ffffff}1-ADAM-12, 10-4, принято.', 0xFF4169E1)
         elseif text:find("%[R%] (.*) (.*)%[(%d+)%]: tо DISP: 10-4") then
@@ -128,6 +374,12 @@ function main()
             playSound(meg3)
         elseif text:find("Последнее предупреждение") then
             playSound(meg1)
+        --[[elseif text:find("причина: 1.(%d+) УК") then
+            stat = text:match("причина: 1.(.*) УК")
+            playSound(crime1)
+        elseif text:find("причина: 1.(%d+) УК") then
+            stat = text:match("причина: (.*) УК")
+            playSound(crime1)]]--
         end
     end
 
@@ -156,9 +408,11 @@ function main()
                             wait(1500)
                             sampSendChat("Придумывать новые статьи, сокращать статьи.")
                             wait(1500)
-                            sampSendChat("/b оск, н. штрафа, хр. зап. веществ")
+                            sampSendChat("/n оск, н. штрафа, хр. зап. веществ")
                             wait(1500)
                             sampSendChat("Давать розыск, если вы сами не видели нарушения или не провели расследование.")
+                            wait(1500)
+                            sampSendChat("Исключение только однно -  если запросили выдачу розыска в рацию.")
                             wait(1500)
                             sampSendChat("Смешивание нескольких статей.")
                             wait(1500)
@@ -196,7 +450,7 @@ function main()
                         if list == 2 then
                             sampSendChat("Тема лекции: «Изъятие запрещённых вещей»")
                             wait(1500)
-                            sampSendChat("Проводить изъятие запрещённых вещей может Сержант и выше. ")
+                            sampSendChat("Проводить изъятие запрещённых вещей может Сержант и выше.")
                             wait(1500)
                             sampSendChat("Если нет такой возможности, то попросите уполномоченного сотрудника.")
                             wait(1500)
@@ -264,7 +518,9 @@ function main()
                             wait(1500)
                             sampSendChat("После оповещения о строе все сотрудники обязаны в срочном порядке прибыть на место строя.")
                             wait(1500)
-                            sampSendChat("Построение происходит в следующем порядке: Police Academy, Patrol Police, Detective Bureau, Military Police, Customs Service, S.W.A.T.")
+                            sampSendChat("Построение происходит в следующем порядке: Police Academy, Patrol Police, Detective Bureau, Military Police, Customs Service.")
+                            wait(1500)
+                            sampSendChat("Отряд быстрого реагирования 'Крылья Свободы' имеют право не принимать участие в строю.")
                             wait(1500)
                             sampSendChat("При опоздании офицер обязан молча стать в конец строя.")
                             wait(1500)
@@ -304,13 +560,13 @@ function main()
                             wait(1500)
                             sampSendChat("А также регламентирует список возможных нарушений и соответствующих наказаний.")
                             wait(1500)
-                            sampSendChat("К примеру, директор ФБР приказал сотруднику LVPD явиться в офис ФБР,")
+                            sampSendChat("К примеру, директор ФБР приказал сотруднику LSPD явиться в офис ФБР,")
                             wait(1500)
                             sampSendChat("Но данный сотрудник не только проигнорировал его,")
                             wait(1500)
                             sampSendChat("Но и играл в казино в рабочее время. За это он может попросту быть уволенным.")
                             wait(1500)
-                            sampSendChat("В его же личное дело пойдет следующие статьи: 1.8 и 1.12")
+                            sampSendChat("В его же личное дело будет внесена определенная пометка, ограничивающая его действия.")
                             wait(1500)
                             sampSendChat("В которых говорится об игре в казино и неподчинении.")
                             wait(1500)
@@ -329,7 +585,7 @@ function main()
                             wait(1500)
                             sampSendChat("и не более 20 минут в час.")
                             wait(1500)
-                            sampSendChat("/b Запрещено сбрасывать счетчик АФК (выходить с АФК множество раз)")
+                            sampSendChat("/n Запрещено сбрасывать счетчик АФК (выходить с АФК множество раз)")
                             wait(1500)
                             ssampSendChat("На этом лекция окончена. Вопросы имеются?")
                             wait(2000)
@@ -383,7 +639,7 @@ function main()
                         if list == 3 then
                             sampAddChatMessage(' ', -1)
                             sampAddChatMessage('[RadioInfo]: {FFFFFF}Разработчик тулса:', 0xFF228B22)
-                            sampAddChatMessage('[RadioInfo]: {BA55D3}deadmv', 0xFF228B22)
+                            sampAddChatMessage('[RadioInfo]: {BA55D3}qsliwq', 0xFF228B22)
                             sampAddChatMessage(' ', -1)
                         end
                     end
@@ -426,6 +682,24 @@ function main()
                         end
                         if list == 11 then
                             playSound(meg1)
+                        end
+                        if list == 12 then
+                            playSound(crime1)
+                        end
+                        if list == 13 then
+                            playSound(crime2)
+                        end
+                        if list == 14 then
+                            playSound(crime3)
+                        end
+                        if list == 15 then
+                            playSound(crime4)
+                        end
+                        if list == 16 then
+                            playSound(crime5)
+                        end
+                        if list == 17 then
+                            playSound(crime6)
                         end
                     end
                 end
@@ -477,19 +751,29 @@ function main()
                 if result then
                     if button == 1 then
                         if list == 0 then
-                            sampShowDialog(2001, "{FFA500}Тестовое меню", string.format("{FFFFFF}1. Звук рации.\n2. Помощь 99.\n3. Помощь ЛС (Шоссе).\n4. Помощь AIR.\n5. Помощь (Погоня).\n6. CODE 3.\n7. 10-4.\n8. Помощь SWAT.\n9. CODE 4."), "Выбрать", "Отмена", 2)
+                            sampShowDialog(2001, "{FFA500}Тестовое меню", string.format("{FFFFFF}1. Звук рации.\n2. Помощь 99.\n3. Помощь ЛС (Шоссе).\n4. Помощь AIR.\n5. Помощь (Погоня).\n6. CODE 3.\n7. 10-4.\n8. Помощь SWAT.\n9. CODE 4.\n10. Мегафон 1.\n11. Мегафон 2.\n12. Мегафон 3.\n13. Crime 1\n14. Crime 2\n15. Crime 3\n16. Crime 4\n17. Crime 5\n18. Crime 6"), "Выбрать", "Отмена", 2)
                         end
                         if list == 1 then
-                            os.execute('explorer "https://vk.com/im"')
+                            about()
                         end
                         if list == 2 then
-                            sampShowDialog(5713, "Помощь по командам", "1. /lecture - меню лекций\n2. /sound - меню звуков\n3. /login - авторизация в скрипте\n4. /panel - админ-панель", "Закрыть", "", 0)
+                            sampShowDialog(1999, "{0633E5}Меню лекций", string.format("{FFFFFF}1.Объявление в розыск.\n2.Правило Миранды.\n3.Изьятие запрещенных веществ.\n4.Рация.\n5.Уважительное общение с гражданскими.\n6.Субординация.\n7.Правила строя.\n8.''Огнестрельное оружие.\n9.Федеральное постановление.\n10.Правила сна.\n11.Обеденный перерыв."), "Выбрать", "Отмена", 2)
                         end
                         if list == 3 then
-                            sampShowDialog(5714, "Уголовный кодекс", string.format("{FFFFFF}1. Глава 1.\n2. Глава 2.\n3. Глава 3.\n4. Глава 4.\n5. Глава 5.\n6. Глава 6.\n7. Глава 7.\n8. Глава 8.\n9. Глава 9.\n10. Глава 10.\n11. Глава 11.\n12. Глава 12.\n13. Глава 13."), "Выбрать", "Отмена", 2)
+                            sampShowDialog(5713, "Помощь по командам", "1. /lecture - меню лекций\n2. /sound - меню звуков\n3. /login - авторизация в скрипте\n4. /panel - админ-панель", "Закрыть", "", 0)
                         end
                         if list == 4 then
+                            sampShowDialog(5714, "Уголовный кодекс", string.format("{FFFFFF}1. Глава 1.\n2. Глава 2.\n3. Глава 3.\n4. Глава 4.\n5. Глава 5.\n6. Глава 6.\n7. Глава 7.\n8. Глава 8.\n9. Глава 9.\n10. Глава 10.\n11. Глава 11.\n12. Глава 12.\n13. Глава 13."), "Выбрать", "Отмена", 2)
+                        end
+                        if list == 5 then
                             sampShowDialog(5713, "Административный кодекс", "1. /lecture - меню лекций\n2. /sound - меню звуков\n3. /login - авторизация в скрипте\n4. /panel - админ-панель", "Закрыть", "", 0)
+                        end
+                        if list == 6 then
+                            os.execute('explorer "https://vk.com/im"')
+                        end
+                        if list == 7 then
+                            sampAddChatMessage('[PoliceRadio]: {FFFFFF}Скрипт перезагружен!', 0xFFFF0000)
+                            thisScript():reload()
                         end
                     end
                 end
@@ -499,13 +783,26 @@ function main()
         function login()
             if isPlayerLoggedIn then
                 -- Выдать сообщение, что игрок уже авторизован
-                sampAddChatMessage('[PoliceRadio]: {FFFFFF}Вы уже авторизованы в КПК!', 0xFFFF0000)
+                sampAddChatMessage('[PoliceRadio]: {FFFFFF}Вы уже авторизованы в КПК! Используйте {40E0D0}/panel{ffffff}.', 0xFFFF0000)
             else
                 -- Показать диалог авторизации
                 sampShowDialog(5712, "Авторизация", 'Имя пользователя: admin\n\tВведите пароль', "Войти", "Отмена", 3)
                 sampSendChat('/me сняв КПК с пояса, вводит данные для входа')
                 lua_thread.create(mainhelper)
             end
+        end
+
+        function ShowMessage(text, title, style)
+            ffi.cdef [[
+                int MessageBoxA(
+                    void* hWnd,
+                    const char* lpText,
+                    const char* lpCaption,
+                    unsigned int uType
+                );
+            ]]
+            local hwnd = ffi.cast('void*', readMemory(0x00C8CF88, 4, false))
+            ffi.C.MessageBoxA(hwnd, text,  title, style and (style + 0x50000) or 0x50000)
         end
         
         function mainhelper()
@@ -518,6 +815,7 @@ function main()
                     isPlayerLoggedIn = true -- Установить флаг авторизации
                     playSound(accept)
                     sampSendChat('/me введя верный пароль, авторизовался в КПК')
+                    kpk()
                 elseif result and button == 1 and input ~= '123123' then
                     -- Неверный пароль
                     sampAddChatMessage('[PoliceRadio]: {FFFFFF}Вы ввели {FF0000}неверный {FFFFFF}пароль!', 0xFFFF0000)
@@ -541,19 +839,41 @@ function main()
 
         function testsound()
             if isPlayerLoggedIn then
-                sampShowDialog(2001, "{FFA500}Тестовое меню", string.format("{FFFFFF}1. Звук рации.\n2. Помощь 99.\n3. Помощь ЛС (Шоссе).\n4. Помощь AIR.\n5. Помощь (Погоня).\n6. CODE 3.\n7. 10-4.\n8. Помощь SWAT.\n9. CODE 4.\n10. Мегафон 1.\n11. Мегафон 2.\n12. Мегафон 3."), "Выбрать", "Отмена", 2)
+                sampShowDialog(2001, "{FFA500}Тестовое меню", string.format("{FFFFFF}1. Звук рации.\n2. Помощь 99.\n3. Помощь ЛС (Шоссе).\n4. Помощь AIR.\n5. Помощь (Погоня).\n6. CODE 3.\n7. 10-4.\n8. Помощь SWAT.\n9. CODE 4.\n10. Мегафон 1.\n11. Мегафон 2.\n12. Мегафон 3.\n13. Crime 1\n14. Crime 2\n15. Crime 3\n16. Crime 4\n17. Crime 5\n18. Crime 6"), "Выбрать", "Отмена", 2)
             else
                 -- Показать диалог авторизации
                 sampAddChatMessage('[PoliceRadio]: {FFFFFF}Вы не {FF0000}авторизованы{ffffff} в КПК! Введите {00FFFF}/login {ffffff}для авторизации.', 0xFFFF0000)
             end
         end
 
+        function test()
+            ShowMessage('Типа тест.', 'Теееееест deadmv', 0x40)
+        end
+
+        function aAfk()
+            actAFK = not actAFK
+            if actAFK then
+                writeMemory(7634870, 1, 1, 1)
+                writeMemory(7635034, 1, 1, 1)
+                memory.fill(7623723, 144, 8)
+                memory.fill(5499528, 144, 6)
+                addOneOffSound(0.0, 0.0, 0.0, 1136)
+                printString('~g~ FK ON', 2000)
+            else
+                writeMemory(7634870, 1, 0, 0)
+                writeMemory(7635034, 1, 0, 0)
+                memory.hex2bin('5051FF1500838500', 7623723, 8)
+                memory.hex2bin('0F847B010000', 5499528, 6)
+                addOneOffSound(0.0, 0.0, 0.0, 1136)
+                printString('~r~ FK OFF', 2000)
+            end
+        end
+
         function kpk()
             if isPlayerLoggedIn then
-                sampShowDialog(2002, "{FFA500}мини-КПК", string.format("{FFFFFF}1. Все звуки.\n2. Открыть мой VK.\n3. Помощь по командам.\n4. Уголовный Кодекс.\n5. Административный Кодекс."), "Выбрать", "Отмена", 2)
-                sampSendChat('/me вошел в главное меню КПК')
+                sampShowDialog(2002, "{FFA500}мини-КПК", string.format("{FFFFFF}1. Все звуки.\n2. О тулсе.\n3. Меню лекций.\n4. Помощь по командам.\n5. Уголовный Кодекс.\n6. Административный Кодекс.\n7. Открыть сообщения VK.\n8. Перезагрузить скрипт."), "Выбрать", "Отмена", 2)
             else
                 -- Показать диалог авторизации
-                sampAddChatMessage('[PoliceRadio]: {FFFFFF}Вы не {FF0000}авторизованы{ffffff} в панель! Введите {00FFFF}/login {ffffff}для авторизации.', 0xFFFF0000)
+                sampAddChatMessage('[PoliceRadio]: {FFFFFF}Вы не {FF0000}авторизованы{ffffff} в КПК! Введите {00FFFF}/login {ffffff}для авторизации.', 0xFFFF0000)
             end
         end
