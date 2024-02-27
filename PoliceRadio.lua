@@ -330,10 +330,10 @@ function main()
             dj, nick, id = text:match("%[R%] (.*) (.*)%[(%d+)%]: to AIR")
             playSound(sound4)
             sampAddChatMessage('[Диспетчер] {ffffff}1-ADAM-12, AIR-3 вылетел на помощь.', 0xFF4169E1)
-        elseif text:find("%[R%] (.*) (.*)%[(%d+)%]: to SWAT") then
-            dj, nick, id = text:match("%[R%] (.*) (.*)%[(%d+)%]: to SWAT")
+        elseif text:find("%[R%] (.*) (.*)%[(%d+)%]: to WoF") then
+            dj, nick, id = text:match("%[R%] (.*) (.*)%[(%d+)%]: to WoF")
             playSound(sound8)
-            sampAddChatMessage('[Диспетчер] {ffffff}1-ADAM-12, Спец. подразделение S.W.A.T выехало на помощь.', 0xFF4169E1)
+            sampAddChatMessage('[Диспетчер] {ffffff}1-ADAM-12, направляю к Вам отряд реагирования "Крылья Свободы".', 0xFF4169E1)
         elseif text:find("Вы не занимаете пост (.*)") then
             randomtext = text:match("Вы не занимаете пост (.*)")
             playSound(sound2)
